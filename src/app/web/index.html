@@ -132,7 +132,7 @@
     <div class="card">
       <h2>Статус компонентов</h2>
       <div id="status">
-        <div style="padding:6px 0"><span class="dot"></span>Market data provider — готов (mock/IB)</div>
+        <div style="padding:6px 0"><span class="dot"></span>Market data — реальные исторические данные + IB / mock</div>
         <div style="padding:6px 0"><span class="dot"></span>Signal engine — SMA crossover</div>
         <div style="padding:6px 0"><span class="dot"></span>Risk manager — pre-trade checks активны</div>
         <div style="padding:6px 0"><span class="dot"></span>OMS — учёт заявок/позиций</div>
@@ -145,15 +145,15 @@
     <div class="card">
       <h2>Интерактивный бэктест</h2>
       <div class="controls">
-        <div><label>Тикер</label><input id="symbol" value="AAPL" /></div>
-        <div><label>Lookback (баров)</label><input id="lookback" type="number" value="250" /></div>
-        <div><label>SMA fast</label><input id="fast" type="number" value="10" /></div>
-        <div><label>SMA slow</label><input id="slow" type="number" value="30" /></div>
-        <div><label>Размер заявки (qty)</label><input id="qty" type="number" value="85" /></div>
+        <div><label>Тикер (реальные данные)</label><select id="symbol"><option value="SPY">SPY</option></select></div>
+        <div><label>Lookback (баров)</label><input id="lookback" type="number" value="500" /></div>
+        <div><label>SMA fast</label><input id="fast" type="number" value="20" /></div>
+        <div><label>SMA slow</label><input id="slow" type="number" value="50" /></div>
+        <div><label>Размер заявки (qty)</label><input id="qty" type="number" value="50" /></div>
         <div></div>
         <button class="run" id="run">▶ Запустить бэктест</button>
         <div class="src" id="src"></div>
-        <div class="src">Подсказка: лимит позиции $10 000. Увеличьте qty (напр. до 100) — риск-менеджер начнёт отклонять крупные заявки.</div>
+        <div class="src">SMA-crossover — учебная стратегия: демонстрирует движок, а не доходность. Увеличьте qty (напр. до 100) — риск-менеджер (лимит позиции $50 000) начнёт отклонять крупные заявки.</div>
       </div>
     </div>
 
@@ -226,7 +226,7 @@ function sma(values, end, window) {            // mean of window bars ending at 
   return s / window;
 }
 // Risk limits mirror app.risk.RiskLimits defaults.
-const RISK = { maxPositionUsd: 10000, maxDailyLossUsd: 2000, maxOrderQty: 500 };
+const RISK = { maxPositionUsd: 50000, maxDailyLossUsd: 2000, maxOrderQty: 500 };
 function computeBacktest({ symbol, lookback, fast, slow, qty }) {
   if (fast >= slow) throw new Error('fast must be < slow');
   const closes = mockCloses(symbol, lookback);
@@ -361,15 +361,15 @@ async function runBacktest() {
   const btn = $('run');
   btn.disabled = true; btn.textContent = '⏳ Считаю…';
   const body = {
-    symbol: $('symbol').value || 'AAPL',
-    lookback: +$('lookback').value || 250,
-    fast: +$('fast').value || 10,
-    slow: +$('slow').value || 30,
-    qty: +$('qty').value || 100,
+    symbol: $('symbol').value || 'SPY',
+    lookback: +$('lookback').value || 500,
+    fast: +$('fast').value || 20,
+    slow: +$('slow').value || 50,
+    qty: +$('qty').value || 50,
   };
   const t0 = performance.now();
   try {
-    // 1) prefer the live backend (real Python pipeline)
+    // 1) prefer the live backend (real Python pipeline on real data)
     const r = await fetch('api/backtest', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -379,14 +379,17 @@ async function runBacktest() {
     const j = await r.json();
     render(j);
     const dt = (performance.now() - t0).toFixed(0);
-    $('src').textContent = `Посчитано backend-кодом (mock-данные, ${j.bars} баров) за ${dt} мс · POST /api/backtest`;
+    const ds = j.data_source === 'real'
+      ? `реальные дневные данные ${j.symbol} (${j.from} → ${j.to})`
+      : `синтетические данные (${j.bars} баров)`;
+    $('src').textContent = `Посчитано backend-кодом на ${ds} за ${dt} мс · POST /api/backtest`;
   } catch (e) {
-    // 2) fall back to the in-browser engine (static deploy / API offline)
+    // 2) fall back to the in-browser engine (API offline) — synthetic data
     try {
       const j = computeBacktest(body);
       render(j);
       const dt = (performance.now() - t0).toFixed(0);
-      $('src').textContent = `Посчитано в браузере (demo-движок, ${j.bars} баров) за ${dt} мс — тот же pipeline SMA → risk → OMS. Backend-версия: POST /api/backtest.`;
+      $('src').textContent = `API недоступен → посчитано в браузере (demo-движок, синтетика, ${j.bars} баров) за ${dt} мс — тот же pipeline SMA → risk → OMS.`;
     } catch (e2) {
       $('src').textContent = 'Ошибка: ' + e2.message;
     }
@@ -395,9 +398,25 @@ async function runBacktest() {
   }
 }
 
+// Populate the ticker dropdown from the backend, then auto-run once.
+async function init() {
+  try {
+    const r = await fetch('api/symbols');
+    const { symbols } = await r.json();
+    if (Array.isArray(symbols) && symbols.length) {
+      const sel = $('symbol');
+      const prev = sel.value;
+      sel.innerHTML = symbols.map((s) => `<option value="${s}">${s}</option>`).join('');
+      sel.value = symbols.includes(prev) ? prev : (symbols.includes('SPY') ? 'SPY' : symbols[0]);
+    }
+  } catch (e) { /* offline: keep the single default option */ }
+  await checkHealth();
+  runBacktest();           // show a real result immediately, no empty state
+}
+
 $('run').addEventListener('click', runBacktest);
-checkHealth();
-window.addEventListener('resize', () => {}); // canvas redraws on next run
+$('symbol').addEventListener('change', runBacktest);
+init();
 </script>
 </body>
 </html>

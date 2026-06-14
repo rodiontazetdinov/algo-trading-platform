@@ -7,11 +7,20 @@ from pydantic import BaseModel
 from app.backtest.engine import Backtester
 from app.config import get_settings
 from app.engine import TradingEngine
+from app.market_data.csv_provider import (
+    CsvMarketDataProvider,
+    available_symbols,
+    has_symbol,
+)
 from app.market_data.mock_provider import MockMarketDataProvider
 from app.risk.manager import RiskLimits, RiskManager
 from app.signals.sma_crossover import SMACrossover
 
 router = APIRouter()
+
+# Position limit sized for real share prices ($100–500); cranking qty past it
+# triggers the risk manager so rejections are visible in the demo.
+DEMO_MAX_POSITION_USD = 50_000
 
 
 class BacktestRequest(BaseModel):
@@ -34,18 +43,33 @@ async def positions() -> dict:
     return {"positions": {}}
 
 
+@router.get("/symbols")
+async def symbols() -> dict:
+    """Tickers with cached real market data (for the demo dropdown)."""
+    return {"symbols": available_symbols()}
+
+
 @router.post("/backtest")
 async def backtest(req: BacktestRequest) -> dict:
-    provider = MockMarketDataProvider()
+    # Real cached data when available, deterministic mock otherwise.
+    if has_symbol(req.symbol):
+        provider: MockMarketDataProvider | CsvMarketDataProvider = CsvMarketDataProvider()
+        data_source = "real"
+    else:
+        provider = MockMarketDataProvider()
+        data_source = "synthetic"
     await provider.connect()
     bars = await provider.historical_bars(req.symbol, req.lookback)
     strat = SMACrossover(req.fast, req.slow)
-    risk = RiskManager(RiskLimits())
+    risk = RiskManager(RiskLimits(max_position_usd=DEMO_MAX_POSITION_USD))
     bt = Backtester(strat, risk, qty=req.qty)
     result = bt.run(bars)
     return {
-        "symbol": req.symbol,
+        "symbol": req.symbol.upper(),
+        "data_source": data_source,
         "bars": len(bars),
+        "from": bars[0].timestamp.date().isoformat() if bars else None,
+        "to": bars[-1].timestamp.date().isoformat() if bars else None,
         "trades": result.trades,
         "rejected": result.rejected,
         "pnl": round(result.realized_pnl, 2),
