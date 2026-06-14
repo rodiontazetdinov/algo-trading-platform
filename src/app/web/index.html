@@ -183,8 +183,10 @@
         <span id="paperPill" class="badge" style="text-transform:none;letter-spacing:0">подключаюсь…</span>
       </h2>
       <div id="paperOffline" style="color:var(--muted);font-size:13px;line-height:1.6">
-        Живая вкладка к <b>paper-счёту IB</b> (виртуальные деньги): баланс, котировки и
-        выставление заявок через IB Gateway. Сейчас Gateway не подключён.
+        Та же платформа подключается к <b>paper-счёту IB</b> (виртуальные деньги) через IB Gateway:
+        баланс счёта, живые котировки и выставление заявок. Реализовано
+        (<code>/api/paper/*</code>, <code>scripts/ib_smoke.py</code>) — демонстрирую вживую на созвоне
+        с запущенным Gateway, без публичного доступа к торговому счёту.
         <div class="src" id="paperErr" style="margin-top:6px"></div>
       </div>
       <div id="paperLive" style="display:none">
@@ -448,10 +450,9 @@ async function loadPaper() {
     }
     getQuote();
   } catch (e) {
-    setPaperPill('● offline', 'var(--amber)');
+    setPaperPill('live · по запросу', 'var(--muted)');
     $('paperOffline').style.display = 'block';
     $('paperLive').style.display = 'none';
-    $('paperErr').textContent = 'Статус: ' + e.message;
   }
 }
 async function getQuote() {
