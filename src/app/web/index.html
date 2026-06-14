@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Algo Trading Platform — Interactive Brokers</title>
+<style>
+  :root {
+    --bg: #0b0f17;
+    --panel: #121826;
+    --panel-2: #161e2e;
+    --line: #233047;
+    --txt: #e6edf6;
+    --muted: #8b9bb4;
+    --accent: #4f9dff;
+    --green: #2ecc71;
+    --red: #ff6b6b;
+    --amber: #ffc24b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(1200px 600px at 70% -10%, #16223a 0%, var(--bg) 55%);
+    color: var(--txt);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 32px 20px 64px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .brand h1 { font-size: 22px; margin: 0; letter-spacing: .2px; }
+  .brand p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  .ghbtn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--panel); border: 1px solid var(--line);
+    padding: 9px 14px; border-radius: 10px; color: var(--txt); font-weight: 600; font-size: 13px;
+  }
+  .ghbtn:hover { border-color: var(--accent); text-decoration: none; }
+  .badges { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0 0; }
+  .badge { font-size: 12px; color: var(--muted); background: var(--panel); border: 1px solid var(--line); padding: 4px 10px; border-radius: 999px; }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 24px; }
+  @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
+  .card h2 { margin: 0 0 14px; font-size: 14px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); font-weight: 700; }
+
+  /* pipeline diagram */
+  .pipe { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; }
+  .node {
+    flex: 1; min-width: 92px; text-align: center; background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 10px; padding: 12px 8px; position: relative;
+  }
+  .node .t { font-weight: 700; font-size: 13px; }
+  .node .s { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .arrow { align-self: center; color: var(--muted); font-size: 18px; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--green); margin-right: 6px; box-shadow: 0 0 8px var(--green); }
+  .infra { margin-top: 12px; color: var(--muted); font-size: 12px; }
+
+  /* controls */
+  .controls { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .controls label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; }
+  .controls input {
+    width: 100%; background: var(--bg); border: 1px solid var(--line); color: var(--txt);
+    padding: 9px 10px; border-radius: 8px; font-size: 14px;
+  }
+  .run {
+    grid-column: 1 / -1; margin-top: 4px; background: var(--accent); color: #04101f; border: 0;
+    padding: 11px; border-radius: 10px; font-weight: 800; font-size: 14px; cursor: pointer; letter-spacing: .3px;
+  }
+  .run:hover { filter: brightness(1.08); }
+  .run:disabled { opacity: .6; cursor: default; }
+  .src { grid-column: 1/-1; font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* stats */
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
+  .stat { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  .stat .v { font-size: 20px; font-weight: 800; }
+  .stat .k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; margin-top: 2px; }
+  .v.green { color: var(--green); } .v.red { color: var(--red); }
+  canvas { width: 100%; height: 220px; display: block; }
+  .chart-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 80px 0; }
+  footer { margin-top: 28px; color: var(--muted); font-size: 12px; text-align: center; }
+  .full { grid-column: 1 / -1; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <h1>Algo Trading Platform <span style="color:var(--muted);font-weight:400">· Interactive Brokers</span></h1>
+      <p>Единый торговый pipeline для backtest / paper / live — своя архитектура на Python.</p>
+    </div>
+    <a class="ghbtn" id="ghlink" href="https://github.com/rodiontazetdinov/algo-trading-platform" target="_blank" rel="noopener">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub
+    </a>
+  </header>
+
+  <div class="badges">
+    <span class="badge">FastAPI</span>
+    <span class="badge">PostgreSQL</span>
+    <span class="badge">Redis</span>
+    <span class="badge">Docker</span>
+    <span class="badge">ib_insync</span>
+    <span class="badge">Prometheus + Grafana</span>
+    <span class="badge" id="apibadge">API: проверяю…</span>
+  </div>
+
+  <div class="grid">
+    <!-- Architecture -->
+    <div class="card">
+      <h2>Архитектура pipeline</h2>
+      <div class="pipe">
+        <div class="node"><div class="t">Market Data</div><div class="s">IB / mock</div></div>
+        <div class="arrow">→</div>
+        <div class="node"><div class="t">Signals</div><div class="s">SMA crossover</div></div>
+        <div class="arrow">→</div>
+        <div class="node"><div class="t">Risk</div><div class="s">лимиты, kill-switch</div></div>
+        <div class="arrow">→</div>
+        <div class="node"><div class="t">OMS</div><div class="s">заявки, позиции</div></div>
+        <div class="arrow">→</div>
+        <div class="node"><div class="t">Execution</div><div class="s">paper / IB live</div></div>
+      </div>
+      <div class="infra">
+        Журнал → <b>PostgreSQL</b> · состояние → <b>Redis</b> · метрики → <b>Prometheus / Grafana</b>.
+        Одна и та же цепочка signal → risk → OMS работает в бэктесте, paper- и live-режиме —
+        меняются только источник данных и шлюз исполнения.
+      </div>
+    </div>
+
+    <!-- Component status -->
+    <div class="card">
+      <h2>Статус компонентов</h2>
+      <div id="status">
+        <div style="padding:6px 0"><span class="dot"></span>Market data provider — готов (mock/IB)</div>
+        <div style="padding:6px 0"><span class="dot"></span>Signal engine — SMA crossover</div>
+        <div style="padding:6px 0"><span class="dot"></span>Risk manager — pre-trade checks активны</div>
+        <div style="padding:6px 0"><span class="dot"></span>OMS — учёт заявок/позиций</div>
+        <div style="padding:6px 0"><span class="dot"></span>Execution gateway — paper-симуляция</div>
+        <div style="padding:6px 0" id="apirow"><span class="dot" id="apidot" style="background:var(--amber);box-shadow:none"></span><span id="apitxt">API /health — проверяю…</span></div>
+      </div>
+    </div>
+
+    <!-- Backtest controls -->
+    <div class="card">
+      <h2>Интерактивный бэктест</h2>
+      <div class="controls">
+        <div><label>Тикер</label><input id="symbol" value="AAPL" /></div>
+        <div><label>Lookback (баров)</label><input id="lookback" type="number" value="250" /></div>
+        <div><label>SMA fast</label><input id="fast" type="number" value="10" /></div>
+        <div><label>SMA slow</label><input id="slow" type="number" value="30" /></div>
+        <div><label>Размер заявки (qty)</label><input id="qty" type="number" value="100" /></div>
+        <div></div>
+        <button class="run" id="run">▶ Запустить бэктест</button>
+        <div class="src" id="src"></div>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div class="card">
+      <h2>Результат</h2>
+      <div class="stats">
+        <div class="stat"><div class="v" id="s_pnl">—</div><div class="k">PnL, $</div></div>
+        <div class="stat"><div class="v" id="s_trades">—</div><div class="k">Сделок</div></div>
+        <div class="stat"><div class="v" id="s_rej">—</div><div class="k">Отклонено риском</div></div>
+        <div class="stat"><div class="v" id="s_sharpe">—</div><div class="k">Sharpe</div></div>
+        <div class="stat"><div class="v" id="s_mdd">—</div><div class="k">Max DD, $</div></div>
+        <div class="stat"><div class="v" id="s_bars">—</div><div class="k">Баров</div></div>
+      </div>
+    </div>
+
+    <!-- Equity chart -->
+    <div class="card full">
+      <h2>Equity-кривая</h2>
+      <canvas id="chart" width="1040" height="220"></canvas>
+      <div class="chart-empty" id="chartEmpty">Нажмите «Запустить бэктест» — кривая капитала построится здесь.</div>
+    </div>
+  </div>
+
+  <footer>
+    Демонстрационный каркас · бэктест считается реальным backend-кодом через <code>POST /api/backtest</code> ·
+    <a href="/docs" target="_blank">Swagger /docs</a> · <a href="/metrics" target="_blank">/metrics</a>
+  </footer>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+async function checkHealth() {
+  try {
+    const r = await fetch('/api/health');
+    const j = await r.json();
+    $('apidot').style.background = 'var(--green)';
+    $('apidot').style.boxShadow = '0 0 8px var(--green)';
+    $('apitxt').textContent = `API /health — ok (режим: ${j.mode})`;
+    $('apibadge').textContent = `API: online · ${j.mode}`;
+  } catch (e) {
+    $('apidot').style.background = 'var(--red)';
+    $('apitxt').textContent = 'API /health — недоступен (запустите backend)';
+    $('apibadge').textContent = 'API: offline';
+  }
+}
+
+function fmt(n) {
+  return Number(n).toLocaleString('ru-RU', { maximumFractionDigits: 2 });
+}
+
+function drawChart(curve) {
+  const c = $('chart');
+  const dpr = window.devicePixelRatio || 1;
+  const W = c.clientWidth, H = c.clientHeight;
+  c.width = W * dpr; c.height = H * dpr;
+  const ctx = c.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+  if (!curve || curve.length < 2) return;
+
+  const pad = 8;
+  const min = Math.min(...curve), max = Math.max(...curve);
+  const range = (max - min) || 1;
+  const x = (i) => pad + (i / (curve.length - 1)) * (W - 2 * pad);
+  const y = (v) => H - pad - ((v - min) / range) * (H - 2 * pad);
+
+  // zero baseline
+  if (min < 0 && max > 0) {
+    ctx.strokeStyle = '#33405a'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(pad, y(0)); ctx.lineTo(W - pad, y(0)); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // area fill
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  const up = curve[curve.length - 1] >= curve[0];
+  grad.addColorStop(0, up ? 'rgba(46,204,113,.28)' : 'rgba(255,107,107,.28)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.beginPath();
+  ctx.moveTo(x(0), y(curve[0]));
+  curve.forEach((v, i) => ctx.lineTo(x(i), y(v)));
+  ctx.lineTo(x(curve.length - 1), H - pad);
+  ctx.lineTo(x(0), H - pad);
+  ctx.closePath();
+  ctx.fillStyle = grad; ctx.fill();
+
+  // line
+  ctx.beginPath();
+  ctx.moveTo(x(0), y(curve[0]));
+  curve.forEach((v, i) => ctx.lineTo(x(i), y(v)));
+  ctx.strokeStyle = up ? '#2ecc71' : '#ff6b6b';
+  ctx.lineWidth = 2; ctx.stroke();
+}
+
+async function runBacktest() {
+  const btn = $('run');
+  btn.disabled = true; btn.textContent = '⏳ Считаю…';
+  const body = {
+    symbol: $('symbol').value || 'AAPL',
+    lookback: +$('lookback').value || 250,
+    fast: +$('fast').value || 10,
+    slow: +$('slow').value || 30,
+    qty: +$('qty').value || 100,
+  };
+  try {
+    const t0 = performance.now();
+    const r = await fetch('/api/backtest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    const dt = (performance.now() - t0).toFixed(0);
+
+    const pnlEl = $('s_pnl');
+    pnlEl.textContent = fmt(j.pnl);
+    pnlEl.className = 'v ' + (j.pnl >= 0 ? 'green' : 'red');
+    $('s_trades').textContent = j.trades;
+    $('s_rej').textContent = j.rejected;
+    $('s_sharpe').textContent = fmt(j.sharpe);
+    $('s_mdd').textContent = fmt(j.max_drawdown);
+    $('s_bars').textContent = j.bars;
+    $('chartEmpty').style.display = 'none';
+    drawChart(j.equity_curve);
+    $('src').textContent = `Посчитано backend-кодом (mock-данные ${j.bars} баров) за ${dt} мс · POST /api/backtest`;
+  } catch (e) {
+    $('src').textContent = 'Ошибка: ' + e.message + ' — backend не запущен? (PYTHONPATH=src uvicorn app.main:app)';
+  } finally {
+    btn.disabled = false; btn.textContent = '▶ Запустить бэктест';
+  }
+}
+
+$('run').addEventListener('click', runBacktest);
+checkHealth();
+window.addEventListener('resize', () => {}); // canvas redraws on next run
+</script>
+</body>
+</html>

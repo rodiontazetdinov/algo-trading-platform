@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.log
+data/
+.DS_Store
+
+# Internal response-strategy docs — must NOT be published (client sees this repo)
+BRIEF.md
+OTKLIK.md
+ZADANIE_CLAUDE_CODE.md

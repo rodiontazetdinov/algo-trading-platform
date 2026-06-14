@@ -1,0 +1,15 @@
+[project]
+name = "algo-trading-platform"
+version = "0.1.0"
+description = "Algorithmic trading platform for Interactive Brokers (market data, signals, risk, OMS, execution, backtest)"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
