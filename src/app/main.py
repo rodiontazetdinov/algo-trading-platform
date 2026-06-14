@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from prometheus_client import make_asgi_app
 
+from app.api.paper import router as paper_router
 from app.api.routes import router
 from app.config import get_settings
 from app.core.logging import configure_logging, get_logger
@@ -28,6 +29,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Algo Trading Platform", version="0.1.0", lifespan=lifespan)
 app.include_router(router, prefix="/api")
+app.include_router(paper_router, prefix="/api/paper")
 app.mount("/metrics", make_asgi_app())
 
 

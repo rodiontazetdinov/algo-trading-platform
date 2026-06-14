@@ -176,6 +176,34 @@
       <canvas id="chart" width="1040" height="220"></canvas>
       <div class="chart-empty" id="chartEmpty">Нажмите «Запустить бэктест» — кривая капитала построится здесь.</div>
     </div>
+
+    <!-- Paper Trading (live IB) -->
+    <div class="card full">
+      <h2>Paper Trading · Interactive Brokers
+        <span id="paperPill" class="badge" style="text-transform:none;letter-spacing:0">подключаюсь…</span>
+      </h2>
+      <div id="paperOffline" style="color:var(--muted);font-size:13px;line-height:1.6">
+        Живая вкладка к <b>paper-счёту IB</b> (виртуальные деньги): баланс, котировки и
+        выставление заявок через IB Gateway. Сейчас Gateway не подключён.
+        <div class="src" id="paperErr" style="margin-top:6px"></div>
+      </div>
+      <div id="paperLive" style="display:none">
+        <div class="stats" style="grid-template-columns:repeat(4,1fr)">
+          <div class="stat"><div class="v" id="p_netliq">—</div><div class="k">Net Liquidation, $</div></div>
+          <div class="stat"><div class="v" id="p_cash">—</div><div class="k">Cash, $</div></div>
+          <div class="stat"><div class="v" id="p_bp">—</div><div class="k">Buying Power, $</div></div>
+          <div class="stat"><div class="v" id="p_acct" style="font-size:15px">—</div><div class="k">Paper-счёт</div></div>
+        </div>
+        <div class="controls" style="grid-template-columns:1fr 1fr 1fr 1fr;margin-top:6px;align-items:end">
+          <div><label>Тикер</label><input id="p_symbol" value="AAPL" /></div>
+          <div><label>Кол-во</label><input id="p_qty" type="number" value="1" /></div>
+          <button class="run" id="p_buy" style="grid-column:auto;margin:0">▲ Купить (paper)</button>
+          <button class="run" id="p_sell" style="grid-column:auto;margin:0;background:var(--red);color:#fff">▼ Продать (paper)</button>
+        </div>
+        <div class="src" id="p_quote"></div>
+        <div class="src" id="p_order"></div>
+      </div>
+    </div>
   </div>
 
   <footer>
@@ -398,6 +426,63 @@ async function runBacktest() {
   }
 }
 
+// --- Paper Trading (live IB) --------------------------------------------
+function setPaperPill(text, color) {
+  const p = $('paperPill');
+  p.textContent = text;
+  p.style.color = color; p.style.borderColor = color;
+}
+async function loadPaper() {
+  try {
+    const s = await (await fetch('api/paper/status')).json();
+    if (!s.connected) throw new Error(s.error || 'offline');
+    setPaperPill('● подключён · ' + (s.account || 'paper'), 'var(--green)');
+    $('paperOffline').style.display = 'none';
+    $('paperLive').style.display = 'block';
+    $('p_acct').textContent = s.account || '—';
+    const a = await (await fetch('api/paper/account')).json();
+    if (a.connected && a.summary) {
+      $('p_netliq').textContent = fmt(a.summary.NetLiquidation || 0);
+      $('p_cash').textContent = fmt(a.summary.TotalCashValue || 0);
+      $('p_bp').textContent = fmt(a.summary.BuyingPower || 0);
+    }
+    getQuote();
+  } catch (e) {
+    setPaperPill('● offline', 'var(--amber)');
+    $('paperOffline').style.display = 'block';
+    $('paperLive').style.display = 'none';
+    $('paperErr').textContent = 'Статус: ' + e.message;
+  }
+}
+async function getQuote() {
+  const sym = ($('p_symbol').value || 'AAPL').toUpperCase();
+  $('p_quote').textContent = 'Котировка ' + sym + '…';
+  try {
+    const q = await (await fetch('api/paper/quote?symbol=' + encodeURIComponent(sym))).json();
+    if (!q.connected) throw new Error(q.error || 'offline');
+    $('p_quote').textContent = `${sym}: last ${q.last ?? '—'} · bid ${q.bid ?? '—'} · ask ${q.ask ?? '—'} · close ${q.close ?? '—'} (delayed)`;
+  } catch (e) { $('p_quote').textContent = 'Котировка недоступна: ' + e.message; }
+}
+async function placeOrder(side) {
+  const sym = ($('p_symbol').value || 'AAPL').toUpperCase();
+  const qty = +$('p_qty').value || 1;
+  $('p_order').textContent = `Отправляю ${side} ${qty} ${sym}…`;
+  try {
+    const r = await fetch('api/paper/order', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbol: sym, side, qty }),
+    });
+    const o = await r.json();
+    if (!o.connected) throw new Error(o.error || 'offline');
+    $('p_order').textContent = `Заявка #${o.order_id}: ${side} ${qty} ${sym} → ${o.status}` +
+      (o.avg_fill_price ? ` @ ${o.avg_fill_price} (filled ${o.filled})` : '');
+    loadPaper();
+  } catch (e) { $('p_order').textContent = 'Ошибка заявки: ' + e.message; }
+}
+$('p_buy').addEventListener('click', () => placeOrder('BUY'));
+$('p_sell').addEventListener('click', () => placeOrder('SELL'));
+$('p_symbol').addEventListener('change', getQuote);
+
 // Populate the ticker dropdown from the backend, then auto-run once.
 async function init() {
   try {
@@ -412,6 +497,7 @@ async function init() {
   } catch (e) { /* offline: keep the single default option */ }
   await checkHealth();
   runBacktest();           // show a real result immediately, no empty state
+  loadPaper();             // probe the IB paper Gateway (graceful if offline)
 }
 
 $('run').addEventListener('click', runBacktest);
